@@ -21,18 +21,15 @@ models/     # обученная модель
 scripts/    # генерация датасета и обучение
 ```
 
-## Запуск в PyCharm
+## Запуск
 
-### 1. Создай интерпретатор Python 3.12
-В PyCharm открой проект `BotProject` и назначь интерпретатор Python 3.12.
-
-### 2. Установи зависимости
+### 1. Установить зависимости
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Подготовь датасет
+### 2. Подготовить датасет
 
 ```bash
 python scripts/generate_dataset.py
@@ -40,7 +37,7 @@ python scripts/generate_dataset.py
 
 Этот шаг создаёт расширенный файл `data/intents_dataset.json` из шаблонов и вариаций, а также пересобирает `data/dialogues.txt`.
 
-### 4. Обучи модель
+### 3. Обучить модель
 
 ```bash
 python scripts/train_model.py
@@ -52,15 +49,15 @@ python scripts/train_model.py
 models/intent_classifier.pkl
 ```
 
-### 5. Добавь токен Telegram
+### 4. Добавить токен Telegram
 
-Создай `.env` на основе `.env.example` или выставь переменную окружения:
+Создать `.env` на основе `.env.example` или выставить переменную окружения:
 
 ```env
 TELEGRAM_BOT_TOKEN=ваш_токен
 ```
 
-### 6. Запусти бота
+### 5. Запустить бота
 
 ```bash
 python -m bot.main
@@ -91,10 +88,3 @@ python -m bot.main
 - `bot/sales_funnel.py` — сценарий мягкой продажи;
 - `bot/bot_engine.py` — объединение всех механизмов;
 - `data/products.json` — каталог товаров.
-
-## Что можно расширить дальше
-
-- увеличить `dialogues.txt` до более крупного корпуса;
-- расширить набор интентов и сценариев;
-- добавить сохранение состояния в БД;
-- подключить тональный анализ и извлечение сущностей.
