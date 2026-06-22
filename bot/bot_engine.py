@@ -10,6 +10,7 @@ from bot.intent_model import IntentClassifier, IntentPrediction
 from bot.nlp import (
     analyze_sentiment,
     clear_text,
+    is_counter_question,
     correct_typos,
     detect_category,
     detect_experience_level,
@@ -39,6 +40,8 @@ SMALLTALK_FALLBACKS = [
     "Я за живой разговор. Если хочешь, можем обсудить настроение, интересы или что-нибудь лёгкое и повседневное.",
     "Давай просто пообщаемся. Могу поддержать тему про хобби, музыку, отдых или что у тебя сейчас на уме.",
     "Можем без напряга поболтать. Если по пути всплывёт музыка или хобби — тоже легко подхвачу.",
+    "Можем поговорить про то, что тебе сейчас действительно интересно. А если в разговоре зацепимся за музыку, я потом аккуратно помогу и с выбором инструмента.",
+    "Я не тороплю с подбором. Давай сначала просто поймём, что тебе вообще нравится, а дальше уже можно мягко перейти к музыке и инструментам.",
 ]
 
 INTERJECTION_REPLIES = [
@@ -47,12 +50,48 @@ INTERJECTION_REPLIES = [
     "Угу, уловил. А что тебе самому сейчас интереснее всего обсудить?",
 ]
 
+GREETING_WITH_QUESTION = [
+    "Привет 🙂 Рад тебя видеть. Если хочешь, можем просто спокойно пообщаться.",
+    "Привет! Я на связи — можем поболтать на любую лёгкую тему или обсудить интересы.",
+    "Привет! Давай просто пообщаемся. Если разговор сам выйдет на музыку — я подхвачу.",
+]
+
+COUNTER_QUESTION_REPLIES = [
+    "У меня всё спокойно: люблю живой разговор, музыку и темы про увлечения. А у тебя что сейчас ближе?",
+    "Если коротко, мне ближе разговоры про интересы, музыку и хобби. А тебе что сегодня интереснее?",
+    "Мне обычно интересны музыка, увлечения и спокойный разговор без спешки. А ты сам что бы хотел обсудить?",
+]
+
+WEATHER_COUNTER_REPLIES = [
+    "У меня всё спокойно — такая погода мне тоже нравится. А тебе больше по душе солнце, прохлада или что-то дождливое и уютное?",
+    "Мне тоже ближе приятная спокойная погода. А ты сам любишь скорее тепло и солнце или что-то более прохладное?",
+    "Мне такая погода тоже кажется комфортной. А у тебя она обычно больше под настроение для прогулки, музыки или просто отдыха?",
+]
+
+MOOD_COUNTER_REPLIES = [
+    "У меня всё спокойно, спасибо. А у тебя день сегодня больше бодрый или хочется чего-то расслабленного?",
+    "Спасибо, у меня тоже всё нормально. А тебе сегодня ближе активный настрой или спокойный вечер?",
+    "У меня всё хорошо. А ты сам сейчас в каком настроении — больше на общение, отдых или что-то творческое?",
+]
+
 POSITIVE_SMALLTALK_REPLIES = [
     "Согласен, настроение у такой погоды приятное. В такие дни особенно хорошо включить любимую музыку. Ты обычно что слушаешь?",
     "Да, когда погода радует, день ощущается легче. Кстати, у тебя музыка тоже часто идёт фоном в такие моменты?",
     "Понимаю, такая погода правда задаёт хороший тон. А из музыки тебе ближе что-то спокойное или более энергичное?",
     "Есть в такой погоде что-то уютное. Часто в такие моменты особенно тянет включить любимый плейлист. Что у тебя там обычно звучит?",
     "Да, такая погода легко располагает к хорошему настроению. Если хочешь, можем от этого плавно перейти к музыке — что тебе ближе по звучанию?",
+    "В такие моменты обычно хорошо чувствуется, что человеку реально нравится. У тебя музыка часто рядом в течение дня или не особо?",
+]
+
+PROACTIVE_SMALLTALK_PROMPTS = [
+    "Кстати, а тебе самому какие темы обычно приятнее: музыка, хобби, кино, техника или что-то совсем другое?",
+    "Если не спешить с подбором, мне сначала интересно понять тебя чуть лучше. Что тебе вообще ближе как интерес?",
+    "Могу просто поддержать разговор. Скажи, что тебе обычно самому интереснее обсуждать — музыку, увлечения или что-то бытовое?",
+]
+
+PROACTIVE_SMALLTALK_QUESTIONS = [
+    "Какие темы тебе обычно ближе: музыка, хобби, фильмы или что-то совсем другое?",
+    "А что тебе самому сейчас интереснее обсудить — музыку, увлечения или что-то повседневное?",
 ]
 
 
@@ -117,6 +156,17 @@ class BotEngine:
                 confidence=0.97,
             )
 
+        if profile.current_stage == "smalltalk" and is_counter_question(cleaned):
+            if profile.last_bot_question == "smalltalk_probe" and is_weather_related(cleaned):
+                reply = random.choice(WEATHER_COUNTER_REPLIES)
+            else:
+                reply = random.choice(COUNTER_QUESTION_REPLIES)
+            return BotReply(
+                text=reply,
+                detected_intent=intent or "smalltalk",
+                confidence=max(confidence, 0.84),
+            )
+
         if profile.current_stage == "music_hook" and not self._looks_like_music_answer(cleaned):
             if is_smalltalk_request(cleaned):
                 profile.current_stage = "smalltalk"
@@ -133,6 +183,16 @@ class BotEngine:
             sales_reply = handle_sales_flow(profile, intent, corrected_text, self.catalog)
             if sales_reply:
                 return BotReply(text=sales_reply, detected_intent=intent, confidence=confidence)
+
+        if profile.current_stage == "smalltalk":
+            if cleaned in {"привет", "здравствуй", "добрый вечер", "добрый день", "хай", "приветик", "привет!"}:
+                profile.last_bot_question = "smalltalk_probe"
+                profile.proactive_smalltalk_step = max(profile.proactive_smalltalk_step, 1)
+                return BotReply(
+                    text=random.choice(GREETING_WITH_QUESTION),
+                    detected_intent=intent or "greeting",
+                    confidence=max(confidence, 0.9),
+                )
 
         if intent is not None:
             direct_response = self._intent_response(intent)
@@ -158,6 +218,21 @@ class BotEngine:
                 if bridge:
                     return BotReply(text=f"{generated}\n\n{bridge}", detected_intent=intent, confidence=confidence)
                 return BotReply(text=generated, detected_intent=intent, confidence=confidence)
+            if profile.proactive_smalltalk_step < 2 and profile.conversation_turns >= 1 and not profile.music_hook_offered:
+                question = PROACTIVE_SMALLTALK_QUESTIONS[profile.proactive_smalltalk_step % len(PROACTIVE_SMALLTALK_QUESTIONS)]
+                profile.proactive_smalltalk_step += 1
+                profile.last_bot_question = "smalltalk_probe"
+                return BotReply(
+                    text=question,
+                    detected_intent=intent or "smalltalk",
+                    confidence=max(confidence, 0.75),
+                )
+            if profile.conversation_turns >= 2 and not profile.music_hook_offered:
+                return BotReply(
+                    text=random.choice(PROACTIVE_SMALLTALK_PROMPTS),
+                    detected_intent=intent or "smalltalk",
+                    confidence=max(confidence, 0.75),
+                )
 
         generated = self.retriever.search(corrected_text)
         if generated:

@@ -359,6 +359,71 @@ def is_smalltalk_request(text: str) -> bool:
     return cleaned in smalltalk_phrases
 
 
+def is_counter_question(text: str) -> bool:
+    cleaned = clear_text(text)
+    if not cleaned:
+        return False
+    exact_phrases = {
+        "а ты",
+        "а тебе",
+        "а у тебя",
+        "а сам",
+        "а как у тебя",
+        "а как ты",
+        "а тебе как",
+        "а ты как",
+        "сам как",
+        "ты сам как",
+    }
+    if cleaned in exact_phrases:
+        return True
+
+    embedded_markers = {
+        "а ты",
+        "а тебе",
+        "а у тебя",
+        "как у тебя",
+        "как ты",
+        "а сам",
+        "ты сам как",
+        "сам как",
+        "а как у тебя",
+        "а как ты",
+        "а тебе как",
+        "а ты как",
+        "а ты как думаешь",
+        "а ты что любишь",
+        "а тебе что ближе",
+        "а ты что слушаешь",
+    }
+    if any(marker in cleaned for marker in embedded_markers):
+        return True
+
+    tokens = cleaned.split()
+    if len(tokens) >= 2:
+        trailing_pairs = {
+            ("а", "тебе"),
+            ("а", "ты"),
+            ("сам", "как"),
+        }
+        if tuple(tokens[-2:]) in trailing_pairs:
+            return True
+
+    trailing_triplets = {
+        ("как", "у", "тебя"),
+        ("а", "у", "тебя"),
+        ("а", "как", "ты"),
+        ("а", "как", "у"),
+        ("а", "ты", "как"),
+        ("а", "тебе", "как"),
+        ("ты", "сам", "как"),
+    }
+    if len(tokens) >= 3 and tuple(tokens[-3:]) in trailing_triplets:
+        return True
+
+    return False
+
+
 def is_weather_related(text: str) -> bool:
     cleaned = clear_text(text)
     if not cleaned:
@@ -383,6 +448,8 @@ def is_positive_smalltalk(text: str) -> bool:
     if not cleaned:
         return False
     if cleaned in POSITIVE_SMALLTALK_PHRASES:
+        return True
+    if cleaned in {"приятная", "хорошая", "отличная", "классная", "неплохая", "солнечная", "теплая", "тёплая"}:
         return True
     return is_weather_related(cleaned) and any(
         phrase in cleaned for phrase in {"хорош", "отлич", "класс", "супер", "приятн", "тепл", "солнеч"}

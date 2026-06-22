@@ -16,6 +16,7 @@ from bot.nlp import (
     is_more_request,
     is_order_confirmation,
     is_preference_statement,
+    is_selection_request,
     is_short_confirmation,
     is_short_rejection,
     is_stop_request,
@@ -57,6 +58,18 @@ EXPERIENCE_FALLBACKS = [
     "Давай уточним только один момент: у тебя уже есть опыт игры на инструменте или ты стартуешь с нуля?",
 ]
 
+PLAY_STATUS_QUESTIONS = [
+    "Супер. Тогда сначала уточню одну вещь: ты уже играешь на каком-то инструменте или только хочешь научиться?",
+    "Хорошо, тогда короткий вопрос перед подбором: ты уже играл на инструментах или пока только хочешь начать?",
+    "Отлично. Чтобы пойти дальше естественно, скажи: ты уже играешь или сейчас скорее хочешь научиться?",
+]
+
+PLAY_STATUS_FALLBACKS = [
+    "Я хочу понять именно стартовую точку: ты уже играешь на каком-то инструменте или только хочешь научиться?",
+    "Скажи коротко: уже играешь или пока только хочешь начать учиться?",
+    "Давай уточним один момент: у тебя уже есть практика игры или это будет первое знакомство с инструментом?",
+]
+
 GENRE_QUESTIONS = [
     "Отлично, уже понятнее. А какой жанр тебе ближе всего: рок, поп, джаз, классика, электроника, инди или хип-хоп?",
     "Хорошо. Теперь скажи, какой жанр тебе ближе: рок, джаз, поп, классика, электроника, инди или хип-хоп?",
@@ -73,6 +86,21 @@ PURPOSE_QUESTIONS = [
     "И последний важный момент перед рекомендацией: инструмент нужен для себя, для обучения, для ребёнка, в подарок или, например, для домашней студии?",
     "Осталось понять сценарий: берёшь для себя, для подарка, для обучения, ребёнку или для домашней студии?",
     "Хорошо, и ещё один момент: инструмент нужен для каких целей?",
+]
+
+GENRE_FALLBACKS = [
+    "Я пока не поймал жанр. Напиши коротко, что тебе ближе: рок, поп, джаз, классика, электроника, инди или хип-хоп.",
+    "Чтобы продолжить подбор, мне нужен жанр. Можно одним словом: рок, джаз, поп, классика, электроника, инди или хип-хоп.",
+]
+
+CATEGORY_FALLBACKS = [
+    "Я не до конца понял формат инструмента. Напиши коротко: гитара, клавишные или укулеле.",
+    "Уточни, пожалуйста, сам инструмент: тебе ближе гитара, клавиши или укулеле?",
+]
+
+PURPOSE_FALLBACKS = [
+    "Мне ещё нужна цель покупки. Напиши коротко: для себя, для обучения, для ребёнка, в подарок или для домашней студии.",
+    "Уточни, пожалуйста, для чего нужен инструмент: для себя, для обучения, ребёнку, в подарок или для домашней студии?",
 ]
 
 RECOMMEND_LIKE_RESPONSES = [
@@ -141,41 +169,91 @@ def handle_sales_flow(profile: UserProfile, intent: str, text: str, catalog: lis
         profile.experience_level = detected_experience
 
     if profile.current_stage == "smalltalk":
-        if intent in {"buy_interest", "instrument_interest", "genre"} or detected_category or detected_genre or detected_purpose:
+        explicit_selection = intent in {"buy_interest", "instrument_interest"} or is_selection_request(cleaned_text)
+        casual_music_signal = intent == "genre" or bool(detected_category) or bool(detected_genre) or bool(detected_purpose)
+
+        if explicit_selection or casual_music_signal:
             profile.current_stage = "music_hook"
             profile.discussed_music = True
-            profile.direct_selection_mode = True
+            profile.direct_selection_mode = explicit_selection
 
             if profile.preferred_genre or profile.preferred_category or profile.purpose:
                 profile.music_interest = True
-                profile.current_stage = "experience"
-                profile.last_bot_question = "experience"
+                profile.current_stage = "play_intent"
+                profile.last_bot_question = "play_intent"
 
                 if profile.preferred_genre:
-                    return random.choice(DIRECT_SELECTION_OPENERS) + " " + GENRE_FOLLOWUPS.get(
+                    followup = GENRE_FOLLOWUPS.get(
                         profile.preferred_genre,
-                        "Здорово. А у тебя уже есть опыт игры на каком-то инструменте или ты только присматриваешься?",
+                        "Здорово. А ты уже играешь на каком-то инструменте или пока только хочешь научиться?",
                     )
+                    if explicit_selection:
+                        return random.choice(DIRECT_SELECTION_OPENERS) + " " + followup
+                    return followup
+
                 if profile.preferred_category and not profile.experience_level:
-                    return random.choice(DIRECT_SELECTION_OPENERS) + " " + random.choice(EXPERIENCE_QUESTIONS)
+                    question = random.choice(PLAY_STATUS_QUESTIONS)
+                    if explicit_selection:
+                        return random.choice(DIRECT_SELECTION_OPENERS) + " " + question
+                    return question
+
                 if profile.preferred_category and profile.experience_level and not profile.preferred_genre:
-                    profile.last_bot_question = "experience"
-                    return random.choice(DIRECT_SELECTION_OPENERS) + " " + random.choice(GENRE_QUESTIONS)
-                return random.choice(DIRECT_SELECTION_OPENERS) + " " + random.choice(EXPERIENCE_QUESTIONS)
+                    question = random.choice(GENRE_QUESTIONS)
+                    profile.last_bot_question = "genre"
+                    if explicit_selection:
+                        return random.choice(DIRECT_SELECTION_OPENERS) + " " + question
+                    return question
+
+                question = random.choice(PLAY_STATUS_QUESTIONS)
+                if explicit_selection:
+                    return random.choice(DIRECT_SELECTION_OPENERS) + " " + question
+                return question
 
             profile.last_bot_question = "music_interest"
-            if profile.direct_selection_mode:
+            if explicit_selection:
                 profile.music_interest = True
-                profile.current_stage = "experience"
-                profile.last_bot_question = "experience"
-                return random.choice(DIRECT_SELECTION_OPENERS) + " " + random.choice(EXPERIENCE_QUESTIONS)
+                profile.discussed_music = True
+                profile.current_stage = "play_intent"
+                profile.last_bot_question = "play_intent"
+                return random.choice(DIRECT_SELECTION_OPENERS) + " " + random.choice(PLAY_STATUS_QUESTIONS)
             return random.choice(SELECTION_INVITES)
+
         if intent == "music_yes":
             profile.music_interest = True
             profile.discussed_music = True
+            profile.current_stage = "play_intent"
+            profile.last_bot_question = "play_intent"
+            return random.choice(PLAY_STATUS_QUESTIONS)
+
+    if profile.last_bot_question == "genre" and detected_genre:
+        profile.preferred_genre = detected_genre
+        if not profile.preferred_category:
             profile.current_stage = "experience"
-            profile.last_bot_question = "experience"
-            return random.choice(EXPERIENCE_QUESTIONS)
+            profile.last_bot_question = "category"
+            return random.choice(CATEGORY_QUESTIONS)
+        if not profile.purpose:
+            profile.current_stage = "experience"
+            profile.last_bot_question = "purpose"
+            return random.choice(PURPOSE_QUESTIONS)
+        profile.current_stage = "budget"
+        profile.last_bot_question = "budget"
+        return random.choice(BUDGET_QUESTIONS)
+
+    if profile.last_bot_question == "category" and detected_category:
+        profile.preferred_category = detected_category
+        if not profile.purpose:
+            profile.current_stage = "experience"
+            profile.last_bot_question = "purpose"
+            return random.choice(PURPOSE_QUESTIONS)
+        profile.current_stage = "budget"
+        profile.last_bot_question = "budget"
+        return random.choice(BUDGET_QUESTIONS)
+
+    if profile.last_bot_question == "purpose" and detected_purpose:
+        profile.purpose = detected_purpose
+        profile.current_stage = "budget"
+        profile.last_bot_question = "budget"
+        return random.choice(BUDGET_QUESTIONS)
 
     if profile.current_stage == "recommend" and is_stop_request(cleaned_text):
         profile.current_stage = "smalltalk"
@@ -199,11 +277,11 @@ def handle_sales_flow(profile: UserProfile, intent: str, text: str, catalog: lis
         if intent in {"music_yes", "genre", "instrument_interest"} or is_short_confirmation(cleaned_text) or detected_genre or detected_purpose or music_affirmation:
             profile.music_interest = True
             profile.discussed_music = True
-            profile.current_stage = "experience"
-            profile.last_bot_question = "experience"
+            profile.current_stage = "play_intent"
+            profile.last_bot_question = "play_intent"
             if detected_genre:
-                return GENRE_FOLLOWUPS.get(detected_genre, "Здорово. А у тебя уже есть опыт игры на каком-то инструменте или ты только присматриваешься?")
-            return random.choice(EXPERIENCE_QUESTIONS)
+                return GENRE_FOLLOWUPS.get(detected_genre, "Здорово. А ты уже играешь на каком-то инструменте или пока только хочешь научиться?")
+            return random.choice(PLAY_STATUS_QUESTIONS)
         if intent == "music_no" or is_short_rejection(cleaned_text):
             profile.music_interest = False
             profile.discussed_music = True
@@ -212,6 +290,51 @@ def handle_sales_flow(profile: UserProfile, intent: str, text: str, catalog: lis
             return "Понял. А если бы выбирать что-то для расслабления или нового хобби, что звучит интереснее: гитара, клавиши или что-то компактное вроде укулеле?"
         profile.last_bot_question = "music_interest"
         return "Я пока не до конца понял ответ. Музыка тебе в целом интересна или лучше поговорить о чём-то другом?"
+
+    if profile.current_stage == "play_intent":
+        if detected_experience:
+            profile.current_stage = "experience"
+            profile.last_bot_question = "experience"
+            if profile.experience_level == "новичок":
+                if not profile.preferred_genre:
+                    profile.last_bot_question = "genre"
+                    return random.choice(GENRE_QUESTIONS)
+                if not profile.preferred_category:
+                    profile.last_bot_question = "category"
+                    return random.choice(CATEGORY_QUESTIONS)
+                if not profile.purpose:
+                    profile.last_bot_question = "purpose"
+                    return random.choice(PURPOSE_QUESTIONS)
+                profile.current_stage = "budget"
+                profile.last_bot_question = "budget"
+                return random.choice(BUDGET_QUESTIONS)
+            return "Отлично, тогда чуть уточню уровень игры: это уже уверенная практика или скорее базовый опыт?"
+
+        if any(phrase in cleaned_text for phrase in {"хочу научиться", "хочу начать", "только хочу начать", "только начинаю", "с нуля", "первый инструмент", "учиться хочу", "хочу попробовать"}):
+            profile.experience_level = "новичок"
+            profile.current_stage = "experience"
+            profile.last_bot_question = "experience"
+            if not profile.preferred_genre:
+                profile.last_bot_question = "genre"
+                return random.choice(GENRE_QUESTIONS)
+            if not profile.preferred_category:
+                profile.last_bot_question = "category"
+                return random.choice(CATEGORY_QUESTIONS)
+            if not profile.purpose:
+                profile.last_bot_question = "purpose"
+                return random.choice(PURPOSE_QUESTIONS)
+            profile.current_stage = "budget"
+            profile.last_bot_question = "budget"
+            return random.choice(BUDGET_QUESTIONS)
+
+        if any(phrase in cleaned_text for phrase in {"играю", "уже играю", "играл", "играю давно", "есть опыт", "умею играть", "занимаюсь"}):
+            profile.current_stage = "experience"
+            profile.last_bot_question = "experience"
+            if not profile.experience_level:
+                return "Понял, значит опыт уже есть. Тогда уточни коротко: ты скорее на базовом уровне или играешь уже уверенно?"
+
+        profile.last_bot_question = "play_intent"
+        return random.choice(PLAY_STATUS_FALLBACKS)
 
     if profile.current_stage in {"experience", "soft_interest"}:
         understood = False
@@ -263,27 +386,27 @@ def handle_sales_flow(profile: UserProfile, intent: str, text: str, catalog: lis
                 profile.last_bot_question = "experience"
                 return random.choice(EXPERIENCE_FALLBACKS)
             if not profile.preferred_genre:
-                profile.last_bot_question = "experience"
-                return random.choice(GENRE_QUESTIONS)
+                profile.last_bot_question = "genre"
+                return random.choice(GENRE_FALLBACKS)
             if not profile.preferred_category:
-                profile.last_bot_question = "experience"
-                return random.choice(CATEGORY_QUESTIONS)
+                profile.last_bot_question = "category"
+                return random.choice(CATEGORY_FALLBACKS)
             if not profile.purpose:
-                profile.last_bot_question = "experience"
-                return random.choice(PURPOSE_QUESTIONS)
+                profile.last_bot_question = "purpose"
+                return random.choice(PURPOSE_FALLBACKS)
             profile.last_bot_question = "experience"
             return "Я почти всё понял, но лучше уточни одним сообщением недостающий момент, и я сразу продолжу подбор."
 
         if not profile.preferred_genre:
-            profile.last_bot_question = "experience"
+            profile.last_bot_question = "genre"
             return random.choice(GENRE_QUESTIONS)
 
         if not profile.preferred_category:
-            profile.last_bot_question = "experience"
+            profile.last_bot_question = "category"
             return random.choice(CATEGORY_QUESTIONS)
 
         if not profile.purpose:
-            profile.last_bot_question = "experience"
+            profile.last_bot_question = "purpose"
             return random.choice(PURPOSE_QUESTIONS)
 
         profile.current_stage = "budget"

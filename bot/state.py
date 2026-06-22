@@ -22,6 +22,7 @@ class UserProfile:
     last_music_hook: Optional[str] = None
     music_hook_offered: bool = False
     direct_selection_mode: bool = False
+    proactive_smalltalk_step: int = 0
 
     def reset(self) -> None:
         self.name = None
@@ -40,6 +41,7 @@ class UserProfile:
         self.last_music_hook = None
         self.music_hook_offered = False
         self.direct_selection_mode = False
+        self.proactive_smalltalk_step = 0
 
 
 @dataclass(slots=True)
